@@ -4,8 +4,14 @@ A simple Android app to calculate insulin dose based on blood glucose and carboh
 
 ## Features
 - Sliders for current blood glucose (mmol/L, increments of 0.1) and carbs in food (grams, increments of 5)
-- Input fields for Target BG, ISF, and ICR
+- Dropdowns for Target BG and ISF
+- Input field for ICR
 - Live calculation of total insulin dose
+
+## Parameter Definitions
+- **Target BG (Target Blood Glucose):** The blood glucose value (in mmol/L) you aim to reach after insulin dosing. Typical values are between 4.0 and 8.0 mmol/L.
+- **ISF (Insulin Sensitivity Factor):** The amount (in mmol/L) that 1 unit of insulin is expected to lower your blood glucose. Typical values range from 5 to 40 mmol/L per unit.
+- **ICR (Insulin-to-Carbohydrate Ratio):** The number of grams of carbohydrate that 1 unit of insulin will cover. For example, an ICR of 10 means 1 unit of insulin covers 10 grams of carbs.
 
 ## Setup Instructions
 
@@ -21,8 +27,8 @@ A simple Android app to calculate insulin dose based on blood glucose and carboh
 
 ## Requirements
 - Android Studio (Giraffe or newer)
-- Android SDK 33+
-- Kotlin 1.8+
+- Android SDK 34+
+- Kotlin 1.9.0+
 
 ## License
 MIT 
