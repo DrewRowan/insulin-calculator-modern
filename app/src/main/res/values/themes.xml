@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.InsulinCalculator" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+    </style>
+</resources> 
