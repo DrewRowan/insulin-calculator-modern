@@ -1,4 +1,4 @@
-#Wed May 28 14:32:53 CEST 2025
+#Wed May 28 14:58:39 CEST 2025
 base.0=/Users/drewrowan/Cursor/InsulinCalculator/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
 base.1=/Users/drewrowan/Cursor/InsulinCalculator/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
 base.2=/Users/drewrowan/Cursor/InsulinCalculator/app/build/intermediates/dex/debug/mergeProjectDexDebug/10/classes.dex
