@@ -4,20 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import com.example.insulincalculator.ui.theme.InsulinCalculatorTheme
 import kotlin.math.round
-import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,20 +43,26 @@ fun InsulinCalculatorScreen() {
     // Dropdown state for ISF
     val isfOptions = (1..8).map { it * 5 } // 5, 10, ..., 40
     var isfExpanded by remember { mutableStateOf(false) }
-    var isf by remember { mutableStateOf(20) }
 
     // Dropdown state for ICR
     val icrOptions = (1..8).map { it * 5 } // 5, 10, ..., 40
     var icrExpanded by remember { mutableStateOf(false) }
-    var icr by remember { mutableStateOf(20) }
+    var icr by remember { mutableStateOf(10) }
+
+    // Correction Dose state
+    var correctionDose by remember { mutableStateOf(0.5f) }
 
     // Calculation
     val insulinDoseRaw =
-        if (isf > 0 && icr > 0) {
-            ((currentBG - targetBG) / isf) + (carbs / icr)
+        if (icr > 0) {
+            correctionDose * (carbs / icr)
         } else 0f
-    val insulinDose = (insulinDoseRaw * 2) / 2.0f
-
+    // adjust for range e.g. 5-7 = 0 correction, 7-9 = 1, etc
+    var rangeCorrection = (currentBG - targetBG) / 2
+    if (rangeCorrection < 0) {
+        rangeCorrection = 0.0f
+    }
+    val finalInsulinDose = insulinDoseRaw + rangeCorrection
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -90,6 +92,16 @@ fun InsulinCalculatorScreen() {
             modifier = Modifier.fillMaxWidth()
         )
 
+        // Correction Dose Slider
+        Text("Correction Dose: ${String.format("%.1f", correctionDose)}")
+        Slider(
+            value = correctionDose,
+            onValueChange = { correctionDose = round(it * 10) / 10 },
+            valueRange = 0f..1f,
+            steps = 10 - 1,
+            modifier = Modifier.fillMaxWidth()
+        )
+
         // Target BG Dropdown
         ExposedDropdownMenuBox(
             expanded = targetBGExpanded,
@@ -103,7 +115,9 @@ fun InsulinCalculatorScreen() {
                 trailingIcon = {
                     Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
                 },
-                modifier = Modifier.fillMaxWidth().fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxWidth()
             )
             ExposedDropdownMenu(
                 expanded = targetBGExpanded,
@@ -115,36 +129,6 @@ fun InsulinCalculatorScreen() {
                         targetBGExpanded = false
                     }) {
                         Text(String.format("%.1f", option))
-                    }
-                }
-            }
-        }
-
-        // ISF Dropdown
-        ExposedDropdownMenuBox(
-            expanded = isfExpanded,
-            onExpandedChange = { isfExpanded = !isfExpanded }
-        ) {
-            OutlinedTextField(
-                value = isf.toString(),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("ISF (mmol/L per unit)") },
-                trailingIcon = {
-                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
-                },
-                modifier = Modifier.fillMaxWidth().fillMaxWidth()
-            )
-            ExposedDropdownMenu(
-                expanded = isfExpanded,
-                onDismissRequest = { isfExpanded = false }
-            ) {
-                isfOptions.forEach { option ->
-                    DropdownMenuItem(onClick = {
-                        isf = option
-                        isfExpanded = false
-                    }) {
-                        Text(option.toString())
                     }
                 }
             }
@@ -182,7 +166,7 @@ fun InsulinCalculatorScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Total Insulin Dose: ${if (insulinDose.isFinite()) String.format("%.1f", insulinDose) else "-"} units",
+            text = "Total Insulin Dose: ${if (finalInsulinDose.isFinite()) String.format("%.1f", finalInsulinDose) else "-"} units",
             fontSize = 22.sp,
             color = MaterialTheme.colors.primary
         )
