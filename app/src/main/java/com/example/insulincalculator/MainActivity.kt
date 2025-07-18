@@ -338,8 +338,8 @@ fun HistoryScreen(
         if (showBasalDialog) {
             AlertDialog(
                 onDismissRequest = { showBasalDialog = false },
-                title = { Text("Estimated Bolus") },
-                text = { Text("Estimated Bolus: ${String.format("%.2f", averageDailyDose)} units") },
+                title = { Text("Estimated Basal") },
+                text = { Text("Estimated Basal: ${String.format("%.2f", averageDailyDose)} units") },
                 confirmButton = {
                     Button(onClick = { showBasalDialog = false }) { Text("OK") }
                 }
