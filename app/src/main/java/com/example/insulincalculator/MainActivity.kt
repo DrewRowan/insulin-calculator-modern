@@ -172,6 +172,12 @@ fun HistoryScreen(
     var filterExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var entryToDelete by remember { mutableStateOf<com.example.insulincalculator.data.InsulinEntry?>(null) }
+    var showBasalDialog by remember { mutableStateOf(false) }
+
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    val dailyTotals = state.entries.groupBy { dateFormat.format(it.timestamp) }
+        .mapValues { (_, entries) -> entries.sumOf { it.finalInsulinDose } }
+    val averageDailyDose = if (dailyTotals.isNotEmpty()) dailyTotals.values.average() else 0.0
 
     Column(
         modifier = Modifier
@@ -188,9 +194,15 @@ fun HistoryScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { filterExpanded = !filterExpanded }) {
-                Text(if (filterExpanded) "Hide Filters" else "Show Filters")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row {
+                Button(onClick = { filterExpanded = !filterExpanded }) {
+                    Text(if (filterExpanded) "Hide Filters" else "Show Filters")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = { showBasalDialog = true }) {
+                    Text("Basal")
+                }
             }
         }
 
@@ -320,6 +332,16 @@ fun HistoryScreen(
                 },
                 dismissButton = {
                     Button(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
+        if (showBasalDialog) {
+            AlertDialog(
+                onDismissRequest = { showBasalDialog = false },
+                title = { Text("Estimated Bolus") },
+                text = { Text("Estimated Bolus: ${String.format("%.2f", averageDailyDose)} units") },
+                confirmButton = {
+                    Button(onClick = { showBasalDialog = false }) { Text("OK") }
                 }
             )
         }
