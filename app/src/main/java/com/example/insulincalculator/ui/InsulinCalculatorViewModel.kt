@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.insulincalculator.data.InsulinEntry
 import com.example.insulincalculator.data.InsulinRepository
+import com.example.insulincalculator.data.LibreLinkUpRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,18 +16,25 @@ data class CalculatorState(
     val carbs: Double = 0.0,
     val correctionDose: Double = 0.5,
     val targetBG: Double = 5.5,
-    val icr: Int = 10,
-    val finalInsulinDose: Double = 0.0
+    val finalInsulinDose: Double = 0.0,
+    val isLoadingGlucose: Boolean = false,
+    val glucoseError: String? = null
 )
 
 class InsulinCalculatorViewModel(
-    private val repository: InsulinRepository
+    private val repository: InsulinRepository,
+    private val libreRepository: LibreLinkUpRepository
 ) : ViewModel() {
+
+    companion object {
+        const val ICR = 10
+    }
+
     private val _state = MutableStateFlow(CalculatorState())
     val state: StateFlow<CalculatorState> = _state.asStateFlow()
 
     fun updateCurrentBG(value: Double) {
-        _state.value = _state.value.copy(currentBG = value)
+        _state.value = _state.value.copy(currentBG = value, glucoseError = null)
         calculateInsulinDose()
     }
 
@@ -45,24 +53,41 @@ class InsulinCalculatorViewModel(
         calculateInsulinDose()
     }
 
-    fun updateICR(value: Int) {
-        _state.value = _state.value.copy(icr = value)
-        calculateInsulinDose()
+    fun autoFetchGlucoseIfLinked() {
+        if (!libreRepository.isLinked()) return
+        fetchGlucoseFromLibre()
+    }
+
+    fun fetchGlucoseFromLibre() {
+        _state.value = _state.value.copy(isLoadingGlucose = true, glucoseError = null)
+        viewModelScope.launch {
+            libreRepository.fetchCurrentGlucose()
+                .onSuccess { glucose ->
+                    val rounded = kotlin.math.round(glucose * 10) / 10
+                    updateCurrentBG(rounded.coerceIn(2.0, 25.0))
+                    _state.value = _state.value.copy(isLoadingGlucose = false)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(
+                        isLoadingGlucose = false,
+                        glucoseError = e.message ?: "Failed to fetch glucose"
+                    )
+                }
+        }
+    }
+
+    fun clearGlucoseError() {
+        _state.value = _state.value.copy(glucoseError = null)
     }
 
     private fun calculateInsulinDose() {
         val state = _state.value
-        val insulinDoseRaw = if (state.icr > 0) {
-            state.correctionDose * (state.carbs / state.icr)
-        } else 0.0
+        val insulinDoseRaw = state.correctionDose * (state.carbs / ICR)
 
         var rangeCorrection = (state.currentBG - state.targetBG) / 2
-        if (rangeCorrection < 0) {
-            rangeCorrection = 0.0
-        }
+        if (rangeCorrection < 0) rangeCorrection = 0.0
 
-        val finalInsulinDose = insulinDoseRaw + rangeCorrection
-        _state.value = state.copy(finalInsulinDose = finalInsulinDose)
+        _state.value = state.copy(finalInsulinDose = insulinDoseRaw + rangeCorrection)
     }
 
     fun saveEntry() {
@@ -74,10 +99,10 @@ class InsulinCalculatorViewModel(
                 carbs = state.carbs,
                 correctionDose = state.correctionDose,
                 targetBG = state.targetBG,
-                icr = state.icr,
+                icr = ICR,
                 finalInsulinDose = state.finalInsulinDose
             )
             repository.saveEntry(entry)
         }
     }
-} 
+}

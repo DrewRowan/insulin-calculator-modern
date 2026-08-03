@@ -1,45 +1,47 @@
 package com.example.insulincalculator
 
-import android.content.Context
+import android.app.DatePickerDialog
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavHostController
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.insulincalculator.data.InsulinRepositoryImpl
+import com.example.insulincalculator.data.LibreLinkUpRepository
 import com.example.insulincalculator.ui.*
 import com.example.insulincalculator.ui.theme.InsulinCalculatorTheme
-import kotlin.math.round
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import android.app.DatePickerDialog
 import java.util.Calendar
-import org.json.JSONArray
-import org.json.JSONObject
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.material.AlertDialog
+import java.util.Locale
+import kotlin.math.round
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,21 +50,77 @@ class MainActivity : ComponentActivity() {
             InsulinCalculatorTheme {
                 Surface(color = MaterialTheme.colors.background) {
                     val context = LocalContext.current
-                    val navController = rememberNavController()
                     val repository = remember(context) { InsulinRepositoryImpl(context) }
+                    val libreRepository = remember(context) { LibreLinkUpRepository(context) }
+                    val navController = rememberNavController()
+                    val navBackStackEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = navBackStackEntry?.destination?.route
 
-                    NavHost(navController = navController, startDestination = "calculator") {
-                        composable("calculator") {
-                            val viewModel: InsulinCalculatorViewModel = viewModel(
-                                factory = InsulinCalculatorViewModelFactory(repository)
-                            )
-                            InsulinCalculatorScreen(navController, viewModel)
+                    Scaffold(
+                        bottomBar = {
+                            BottomNavigation {
+                                BottomNavigationItem(
+                                    icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+                                    label = { Text("Calculator") },
+                                    selected = currentRoute == "calculator",
+                                    onClick = {
+                                        navController.navigate("calculator") {
+                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                )
+                                BottomNavigationItem(
+                                    icon = { Icon(Icons.Filled.List, contentDescription = null) },
+                                    label = { Text("History") },
+                                    selected = currentRoute == "history",
+                                    onClick = {
+                                        navController.navigate("history") {
+                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                )
+                                BottomNavigationItem(
+                                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                                    label = { Text("Settings") },
+                                    selected = currentRoute == "settings",
+                                    onClick = {
+                                        navController.navigate("settings") {
+                                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
+                                )
+                            }
                         }
-                        composable("history") {
-                            val viewModel: HistoryViewModel = viewModel(
-                                factory = HistoryViewModelFactory(repository)
-                            )
-                            HistoryScreen(navController, viewModel)
+                    ) { paddingValues ->
+                        NavHost(
+                            navController = navController,
+                            startDestination = "calculator",
+                            modifier = Modifier.padding(paddingValues)
+                        ) {
+                            composable("calculator") {
+                                val vm: InsulinCalculatorViewModel = viewModel(
+                                    factory = InsulinCalculatorViewModelFactory(repository, libreRepository)
+                                )
+                                InsulinCalculatorScreen(vm)
+                            }
+                            composable("history") {
+                                val vm: HistoryViewModel = viewModel(
+                                    factory = HistoryViewModelFactory(repository)
+                                )
+                                HistoryScreen(vm)
+                            }
+                            composable("settings") {
+                                val vm: SettingsViewModel = viewModel(
+                                    factory = SettingsViewModelFactory(libreRepository)
+                                )
+                                SettingsScreen(vm)
+                            }
                         }
                     }
                 }
@@ -71,19 +129,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(androidx.compose.material.ExperimentalMaterialApi::class)
 @Composable
-fun InsulinCalculatorScreen(
-    navController: NavHostController,
-    viewModel: InsulinCalculatorViewModel
-) {
+fun InsulinCalculatorScreen(viewModel: InsulinCalculatorViewModel) {
     val state by viewModel.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner.lifecycle) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.autoFetchGlucoseIfLinked()
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.Top),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Insulin Calculator", fontSize = 28.sp, modifier = Modifier.padding(bottom = 8.dp))
@@ -94,8 +156,36 @@ fun InsulinCalculatorScreen(
             color = MaterialTheme.colors.primary
         )
 
-        // Current BG Slider
-        Text("Current Blood Glucose: ${String.format("%.1f", state.currentBG)} mmol/L")
+        // Current BG with LibreLinkUp fetch button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Current Blood Glucose: ${String.format("%.1f", state.currentBG)} mmol/L")
+            if (state.isLoadingGlucose) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(
+                    onClick = { viewModel.fetchGlucoseFromLibre() },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Fetch from LibreLink",
+                        tint = MaterialTheme.colors.primary
+                    )
+                }
+            }
+        }
+        if (state.glucoseError != null) {
+            Text(
+                text = state.glucoseError!!,
+                color = MaterialTheme.colors.error,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Slider(
             value = state.currentBG.toFloat(),
             onValueChange = { viewModel.updateCurrentBG((round(it * 10) / 10).toDouble()) },
@@ -104,7 +194,6 @@ fun InsulinCalculatorScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Carbs Slider
         Text("Carbs in Food: ${state.carbs.toInt()} g")
         Slider(
             value = state.carbs.toFloat(),
@@ -114,7 +203,6 @@ fun InsulinCalculatorScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Correction Dose Slider
         Text("Correction Dose: ${String.format("%.1f", state.correctionDose)}")
         Slider(
             value = state.correctionDose.toFloat(),
@@ -124,7 +212,6 @@ fun InsulinCalculatorScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Target BG Slider
         Text("Target BG: ${String.format("%.1f", state.targetBG)} mmol/L")
         Slider(
             value = state.targetBG.toFloat(),
@@ -134,17 +221,7 @@ fun InsulinCalculatorScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // ICR Slider
-        Text("ICR: ${state.icr} g per unit")
-        Slider(
-            value = state.icr.toFloat(),
-            onValueChange = { viewModel.updateICR((round(it / 5) * 5).toInt()) },
-            valueRange = 5f..40f,
-            steps = ((40f - 5f) / 5f).toInt() - 1,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = { viewModel.saveEntry() },
@@ -152,21 +229,11 @@ fun InsulinCalculatorScreen(
         ) {
             Text("Save")
         }
-
-        Button(
-            onClick = { navController.navigate("history") },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("View History")
-        }
     }
 }
 
 @Composable
-fun HistoryScreen(
-    navController: NavHostController,
-    viewModel: HistoryViewModel
-) {
+fun HistoryScreen(viewModel: HistoryViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var filterExpanded by remember { mutableStateOf(false) }
@@ -184,56 +251,37 @@ fun HistoryScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Button(onClick = { navController.popBackStack() }) { Text("Back") }
-            Text("History", fontSize = 24.sp)
-        }
+        Text("History", fontSize = 24.sp, modifier = Modifier.padding(bottom = 8.dp))
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Row {
-                Button(onClick = { filterExpanded = !filterExpanded }) {
-                    Text(if (filterExpanded) "Hide Filters" else "Show Filters")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { showBasalDialog = true }) {
-                    Text("Basal")
-                }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { filterExpanded = !filterExpanded }) {
+                Text(if (filterExpanded) "Hide Filters" else "Show Filters")
+            }
+            Button(onClick = { showBasalDialog = true }) {
+                Text("Basal")
             }
         }
 
         if (filterExpanded) {
             Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                // Date Picker Button
                 Button(onClick = {
                     val calendar = Calendar.getInstance()
-                    val year = calendar.get(Calendar.YEAR)
-                    val month = calendar.get(Calendar.MONTH)
-                    val day = calendar.get(Calendar.DAY_OF_MONTH)
                     DatePickerDialog(
                         context,
-                        { _, selectedYear, selectedMonth, selectedDay ->
+                        { _, year, month, day ->
                             val newCalendar = Calendar.getInstance()
-                            newCalendar.set(selectedYear, selectedMonth, selectedDay)
+                            newCalendar.set(year, month, day)
                             viewModel.updateFilter(state.filterState.copy(selectedDate = newCalendar.time))
                         },
-                        year,
-                        month,
-                        day
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH),
+                        calendar.get(Calendar.DAY_OF_MONTH)
                     ).show()
                 }) {
-                    Text(state.filterState.selectedDate?.let { 
-                        "Filter Date: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(it)}" 
+                    Text(state.filterState.selectedDate?.let {
+                        "Filter Date: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(it)}"
                     } ?: "Select Date Filter")
                 }
-
-                // Add other filter fields here...
-                // (BG, Carbs, Correction, Target, ICR, Dose ranges)
-
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(onClick = { viewModel.updatePage(0) }) {
                     Text("Apply Filters")
@@ -243,7 +291,6 @@ fun HistoryScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Column Headers
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf(
                 "timestamp" to "Time",
@@ -267,7 +314,6 @@ fun HistoryScreen(
 
         Divider()
 
-        // Table Content
         Column(modifier = Modifier.weight(1f)) {
             val pageEntries = state.entries
                 .drop(state.currentPage * state.pageSize)
@@ -287,7 +333,7 @@ fun HistoryScreen(
                         }
                 ) {
                     listOf(
-                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(entry.timestamp),
+                        SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(entry.timestamp),
                         String.format("%.1f", entry.currentBG),
                         String.format("%.0f", entry.carbs),
                         String.format("%.1f", entry.correctionDose),
@@ -295,22 +341,22 @@ fun HistoryScreen(
                         entry.icr.toString(),
                         String.format("%.1f", entry.finalInsulinDose)
                     ).forEach { value ->
-                        Text(value, modifier = Modifier.weight(1f), fontSize = 14.sp)
+                        Text(value, modifier = Modifier.weight(1f), fontSize = 12.sp)
                     }
                 }
                 Divider()
             }
         }
 
-        // Pagination Controls
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
                 onClick = { viewModel.updatePage(state.currentPage - 1) },
                 enabled = state.currentPage > 0
-            ) { Text("Previous") }
+            ) { Text("Prev") }
 
             Text("Page ${state.currentPage + 1} of ${if (state.entries.isEmpty()) 1 else (state.entries.size + state.pageSize - 1) / state.pageSize}")
 
@@ -319,6 +365,7 @@ fun HistoryScreen(
                 enabled = state.currentPage < (state.entries.size + state.pageSize - 1) / state.pageSize - 1
             ) { Text("Next") }
         }
+
         if (showDeleteDialog && entryToDelete != null) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
@@ -335,15 +382,159 @@ fun HistoryScreen(
                 }
             )
         }
+
         if (showBasalDialog) {
             AlertDialog(
                 onDismissRequest = { showBasalDialog = false },
                 title = { Text("Estimated Basal") },
-                text = { Text("Estimated Basal: ${String.format("%.2f", averageDailyDose)} units") },
+                text = { Text("Estimated Basal: ${String.format("%.2f", averageDailyDose)} units/day") },
                 confirmButton = {
                     Button(onClick = { showBasalDialog = false }) { Text("OK") }
                 }
             )
         }
     }
-} 
+}
+
+@Composable
+fun SettingsScreen(viewModel: SettingsViewModel) {
+    val state by viewModel.state.collectAsState()
+    val regions = listOf(
+        "EU" to "Europe (EU)",
+        "US" to "United States (US)",
+        "AU" to "Australia (AU)",
+        "CA" to "Canada (CA)",
+        "DE" to "Germany (DE)",
+        "JP" to "Japan (JP)"
+    )
+    var regionExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Settings", fontSize = 28.sp, modifier = Modifier.padding(bottom = 8.dp))
+
+        Text("LibreLinkUp Account", fontSize = 20.sp)
+        Divider()
+
+        if (state.isLinked) {
+            Card(modifier = Modifier.fillMaxWidth(), elevation = 2.dp) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Connected", color = MaterialTheme.colors.primary, fontSize = 16.sp)
+                    Text(state.linkedEmail ?: "")
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = { viewModel.unlink() },
+                        colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unlink Account", color = MaterialTheme.colors.onError)
+                    }
+                }
+            }
+        } else {
+            if (state.expiredEmail != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = MaterialTheme.colors.error.copy(alpha = 0.1f),
+                    elevation = 0.dp
+                ) {
+                    Text(
+                        "Session expired for ${state.expiredEmail}. Please re-link your account.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colors.error,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = state.email,
+                onValueChange = viewModel::updateEmail,
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = state.password,
+                onValueChange = viewModel::updatePassword,
+                label = { Text("Password") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true
+            )
+
+            // Region dropdown
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = regions.find { it.first == state.region }?.second ?: state.region,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Region") },
+                    trailingIcon = {
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // Transparent overlay to capture clicks on the read-only field
+                Box(modifier = Modifier
+                    .matchParentSize()
+                    .clickable { regionExpanded = true }
+                )
+                DropdownMenu(
+                    expanded = regionExpanded,
+                    onDismissRequest = { regionExpanded = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    regions.forEach { (key, label) ->
+                        DropdownMenuItem(onClick = {
+                            viewModel.updateRegion(key)
+                            regionExpanded = false
+                        }) {
+                            Text(label)
+                        }
+                    }
+                }
+            }
+
+            if (state.error != null) {
+                Text(
+                    text = state.error!!,
+                    color = MaterialTheme.colors.error,
+                    fontSize = 13.sp
+                )
+            }
+
+            Button(
+                onClick = { viewModel.linkAccount() },
+                enabled = !state.isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colors.onPrimary
+                    )
+                } else {
+                    Text("Link Account")
+                }
+            }
+        }
+
+        if (state.successMessage != null) {
+            Text(
+                text = state.successMessage!!,
+                color = MaterialTheme.colors.primary,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
